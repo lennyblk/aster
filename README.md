@@ -1,12 +1,45 @@
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/c593200c-5286-4328-b6f1-c95e54adfc57" />
+<p align="center">
+  <img src="icon.svg" width="140" alt="aster">
+</p>
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/7062eba6-dac4-49da-8717-fb203f04536b" />
+<h1 align="center">a s t e r</h1>
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/4a8ac2a2-34b0-46f6-8787-379c4d49feb2" />
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/82e677cf-d030-44d8-887c-2abb70787769" />
+<p align="center">
+  <a href="https://github.com/lennyblk/aster/releases/latest"><b>Download</b></a>
+</p>
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/7a535544-ecc8-49ad-91d1-f862f80a19f1" />
+<p align="center">
+  <img src="docs/screenshots/title.png" width="900" alt="Title screen">
+</p>
 
-<img width="2557" height="1437" alt="image" src="https://github.com/user-attachments/assets/5eff6ba6-2d05-4bba-885b-90c938774dbc" />
+<br>
 
+## Installation
+
+1. Go to the [releases](https://github.com/lennyblk/aster/releases/latest) page.
+2. Download the file for your system (Windows or macOS).
+3. Launch the game.
+
+**Windows**: if SmartScreen shows a warning, click *More info*, then *Run anyway*.
+
+**macOS**: unzip the archive, then right-click the app and choose *Open* the first time.
+
+<br>
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/mountain.png" alt="Mountain"></td>
+    <td><img src="docs/screenshots/desert.png" alt="Desert"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/snow.png" alt="Snow"></td>
+    <td><img src="docs/screenshots/settings.png" alt="Settings"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/map-select.png" alt="Map selection"></td>
+    <td><img src="docs/screenshots/game-over.png" alt="Game over"></td>
+  </tr>
+</table>
