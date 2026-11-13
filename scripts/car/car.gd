@@ -7,6 +7,7 @@ const CAM_ROTATE_SPEED = 5.0
 @export var engine_power := 300.0
 @export var reverse_power := 0.5            ## share of engine_power when driving backward
 @export var reverse_max_speed_kmh := 25.0   ## no more push backward above this speed
+@export var brake_decel := 16.0             ## m/s2 added when braking while still rolling forward, on top of the engine
 
 @export_group("Steering")
 @export var max_steer := 0.8              ## radians
@@ -210,6 +211,11 @@ func _physics_process(delta: float) -> void:
 	var forward_speed := global_basis.z.dot(linear_velocity)
 	if throttle < 0.0 and forward_speed < 0.5:
 		engine_force *= reverse_power if -forward_speed * 3.6 < reverse_max_speed_kmh else 0.0
+	elif throttle < 0.0 and is_on_ground():
+		# the engine alone brakes softly: this slows the car down hard against its motion, so tight corners
+		# can be entered at the right speed
+		var flat_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
+		apply_central_force(-flat_vel.normalized() * mass * brake_decel * -throttle)
 
 	# right after a hit the assists stay off, so every crash is resolved by the physics alone (same speed loss,
 	# same bounce) instead of being partly undone by the drift speed keeping or the trajectory correction
