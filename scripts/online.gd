@@ -1,10 +1,10 @@
 extends Node
 ## Shared leaderboard on Supabase (autoload "Online"). Every new personal best is sent with the player's
-## name; the leaderboard shows the best time of each player on a map.
+## name and its ghost; the leaderboard shows the best time of each player on a map.
 ## Only the project URL and the public (anon / publishable) key go here, NEVER the database password.
-## The table, view and access rules are created by docs/supabase.sql.
+## The table, view and access rules are created by docs/supabase.sql (+ docs/supabase_ghosts.sql on an older setup).
 
-signal leaderboard_loaded(rows)   # Array of {player_id, player_name, map, time_ms} for every map, null on failure
+signal leaderboard_loaded(rows)   # Array of {id, player_id, player_name, map, time_ms, has_ghost} for every map, null on failure
 
 const SUPABASE_URL := "https://vekiqhgaexvqodrjhlec.supabase.co"  
 const SUPABASE_KEY := "sb_publishable_jWjf7uAL0tn2LtVZRyZQPQ_TOQIXrt3"
@@ -12,7 +12,9 @@ const PLAYER_FILE := "user://player.cfg"
 
 var player_name := ""
 var player_id := ""       
-var _uploaded := {}   # map id -> best time (ms) already on the leaderboard
+# map id -> best time (ms) already on the leaderboard. Saved under a new key since only the first lap counts:
+# the old values were flying laps and would block the upload of slower first laps.
+var _uploaded := {}
 
 
 func _ready() -> void:
@@ -22,7 +24,7 @@ func _ready() -> void:
 	if cfg.load(PLAYER_FILE) == OK:
 		player_name = cfg.get_value("player", "name", "")
 		player_id = cfg.get_value("player", "id", "")
-		_uploaded = cfg.get_value("player", "uploaded", {})
+		_uploaded = cfg.get_value("player", "uploaded_lap1", {})
 	if player_id == "":
 		player_id = Crypto.new().generate_random_bytes(16).hex_encode()
 		_save()
@@ -62,12 +64,17 @@ func submit_time(scene_path: String, time: float) -> void:
 		return
 	var id := map_id(scene_path)
 	var ms := int(round(time * 1000.0))
-	var body := JSON.stringify({
+	var row := {
 		"player_id": player_id,
 		"player_name": player_name,
 		"map": id,
 		"time_ms": ms,
-	})
+	}
+	# the local ghost file always holds the local best lap, the one sent here
+	var ghost := Game.local_ghost(scene_path)
+	if ghost != "":
+		row["ghost"] = ghost
+	var body := JSON.stringify(row)
 	_request("/rest/v1/lap_times", HTTPClient.METHOD_POST, body, ["Prefer: return=minimal"], func(ok: bool, _data):
 		if ok and ms < int(_uploaded.get(id, 1 << 30)):
 			_uploaded[id] = ms
@@ -79,11 +86,19 @@ func fetch_leaderboard() -> void:
 		leaderboard_loaded.emit(null)
 		return
 	sync_local_bests()
-	var query := "/rest/v1/leaderboard?select=player_id,player_name,map,time_ms&order=time_ms.asc&limit=1000"
+	var query := "/rest/v1/leaderboard?select=id,player_id,player_name,map,time_ms,has_ghost&order=time_ms.asc&limit=1000"
 	_request(query, HTTPClient.METHOD_GET, "", [], func(ok: bool, data):
 		if ok and data is Array:
 			_restore_missing_bests(data)
 		leaderboard_loaded.emit(data if ok and data is Array else null))
+
+
+## Downloads the ghost of a leaderboard row: done(ghost) gets the encoded lap, "" on failure
+func fetch_ghost(row_id: int, done: Callable) -> void:
+	_request("/rest/v1/lap_times?select=ghost&id=eq.%d" % row_id, HTTPClient.METHOD_GET, "", [], func(ok: bool, data):
+		var ghost = data[0].get("ghost") if ok and data is Array and not data.is_empty() else null
+		if done.is_valid():   # the pause menu that asked may be closed by now
+			done.call(ghost if ghost is String else ""))
 
 
 # A personal best that is not (or no longer) on the leaderboard, e.g. rows deleted by hand, is sent again
@@ -134,5 +149,5 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("player", "name", player_name)
 	cfg.set_value("player", "id", player_id)
-	cfg.set_value("player", "uploaded", _uploaded)
+	cfg.set_value("player", "uploaded_lap1", _uploaded)
 	cfg.save(PLAYER_FILE)

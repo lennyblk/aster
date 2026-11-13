@@ -78,6 +78,7 @@ const CAM_ROTATE_SPEED = 5.0
 @export_group("Lights")
 @export var drift_light_boost := 4.0     ## red rear light brightness while the handbrake is held (1 = normal)
 @export var drift_light_speed := 14.0    ## how fast it brightens and dims back
+@export var drift_light_color := Color(0.62, 0.0, 0.02)   ## deep red of the rear bar while the handbrake is held
 
 @export_group("Game over")
 @export var flip_tilt := 0.35             ## car up-vector dot world-up below this counts as flipped (~70 deg)
@@ -111,7 +112,8 @@ var _wheel_visuals: Array = []   # [wheel, mesh, mesh rest transform]
 var _hit_cooldown := 0.0   # seconds left during which the arcade assists leave the physics alone after hitting something
 var _hold_still := true   # parked after the spawn or a reset until the player touches a control: no rolling down slopes
 var _tail_light: StandardMaterial3D
-var _tail_base_energy := 1.0
+var _tail_base: Dictionary     # the rear bar material as authored: albedo, emission, energy, metallic, roughness
+var _drift_light := 0.0        # 0..1, how far the rear bar is into its handbrake look
 var _kick_hold := 0.0
 var _kick_left := 0.0       # seconds left in the current kick
 var _kick_rate := 0.0       # signed rad/s added per second of kick
@@ -126,7 +128,13 @@ func _ready() -> void:
 	add_child(load("res://scripts/car/boost_fx.gd").new())
 	_tail_light = load("res://models/car/materials/Matériau.003.tres")
 	if _tail_light:
-		_tail_base_energy = _tail_light.emission_energy_multiplier
+		_tail_base = {
+			"albedo": _tail_light.albedo_color,
+			"emission": _tail_light.emission,
+			"energy": _tail_light.emission_energy_multiplier,
+			"metallic": _tail_light.metallic,
+			"roughness": _tail_light.roughness,
+		}
 	Game.state_changed.connect(_on_game_state)
 	_on_game_state(Game.state)
 	spawn_transform = global_transform
@@ -328,8 +336,15 @@ func _process(delta: float) -> void:
 	if _tail_light == null:
 		return
 	var held := Game.state == Game.State.PLAYING and Input.is_action_pressed("handbrake")
-	var target := _tail_base_energy * (drift_light_boost if held else 1.0)
-	_tail_light.emission_energy_multiplier = lerpf(_tail_light.emission_energy_multiplier, target, clampf(drift_light_speed * delta, 0.0, 1.0))
+	_drift_light = lerpf(_drift_light, 1.0 if held else 0.0, clampf(drift_light_speed * delta, 0.0, 1.0))
+	var k := _drift_light
+	_tail_light.emission = (_tail_base.emission as Color).lerp(drift_light_color, k)
+	_tail_light.emission_energy_multiplier = _tail_base.energy * lerpf(1.0, drift_light_boost, k)
+	# The metallic bar mirrors the sky, lighter in some places than others: while lit it stops reflecting,
+	# so the whole width glows the same red
+	_tail_light.albedo_color = (_tail_base.albedo as Color).lerp(Color(0.2, 0.0, 0.01), k)
+	_tail_light.metallic = lerpf(_tail_base.metallic, 0.0, k)
+	_tail_light.roughness = lerpf(_tail_base.roughness, 1.0, k)
 
 
 func _update_wheel_visuals() -> void:

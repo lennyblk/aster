@@ -3,6 +3,8 @@ extends CanvasLayer
 ## Settings: volumes and display (mode, resolution, vsync, max fps).
 
 const VOLUMES := [["master", "Master"], ["music", "Music"], ["engine", "Engine"], ["effects", "SFX"]]
+const Race := preload("res://scripts/race.gd")
+const GHOST_BUTTON_WIDTH := 34.0
 
 var _root: Control
 var _main: VBoxContainer
@@ -182,6 +184,7 @@ func _build_leaderboard() -> void:
 	_leaderboard_scroll.offset_bottom = -44
 	_leaderboard_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_leaderboard_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	_leaderboard_scroll.follow_focus = true   # keeps the focused ghost button in view with a controller
 	_leaderboard.add_child(_leaderboard_scroll)
 	_leaderboard_rows = VBoxContainer.new()
 	_leaderboard_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -226,11 +229,49 @@ func _on_leaderboard_loaded(rows) -> void:
 		_leaderboard_rows.add_child(header)
 		if times.is_empty():
 			_leaderboard_rows.add_child(_leaderboard_line("", "no time yet", "", false))
+		# ghosts can only be raced on the map being played
+		var ghost_map: bool = m.scene == Game.current_map
 		for i in times.size():
 			var r: Dictionary = times[i]
-			_leaderboard_rows.add_child(_leaderboard_line(str(i + 1), str(r.get("player_name", "?")).to_lower(),
-				Game.format_time(float(r.get("time_ms", 0)) / 1000.0), r.get("player_id", "") == Online.player_id))
+			var mine: bool = r.get("player_id", "") == Online.player_id
+			var line := _leaderboard_line(str(i + 1), str(r.get("player_name", "?")).to_lower(),
+				Game.format_time(float(r.get("time_ms", 0)) / 1000.0), mine)
+			if ghost_map:
+				var has_ghost: bool = r.get("has_ghost", false) or (mine and Game.local_ghost(m.scene) != "")
+				line.add_child(_ghost_button(r, mine) if has_ghost else _gap(0, GHOST_BUTTON_WIDTH))
+			_leaderboard_rows.add_child(line)
 		_leaderboard_rows.add_child(_gap(12))
+
+
+func _ghost_button(row: Dictionary, mine: bool) -> Control:
+	var b := NeonButton.new()
+	b.text = "ghost"
+	b.text_size = 9
+	b.custom_minimum_size = Vector2(GHOST_BUTTON_WIDTH, 0)
+	var player_name := str(row.get("player_name", "?")).to_lower()
+	b.pressed.connect(func():
+		# your own ghost is on disk: no download, works offline too
+		var local := Game.local_ghost(Game.current_map) if mine else ""
+		if local != "":
+			_race_ghost(local, player_name)
+			return
+		b.text = "..."
+		b.disabled = true
+		Online.fetch_ghost(int(row.get("id", 0)), func(data: String):
+			if not _race_ghost(data, player_name):
+				b.text = "failed"
+				b.disabled = false))
+	return b
+
+
+## Starts the map again with this ghost; false if the data is not a usable lap
+func _race_ghost(data: String, player_name: String) -> bool:
+	var frames := Game.decode_ghost(data)
+	if frames.size() < 2 * Race.GHOST_STRIDE:
+		return false
+	Game.set_ghost(Game.current_map, player_name, frames)
+	Game.restart()
+	return true
 
 
 func _leaderboard_line(place: String, player: String, time: String, mine: bool) -> Control:
@@ -353,9 +394,9 @@ func _title(text: String) -> Label:
 	return l
 
 
-func _gap(h: float) -> Control:
+func _gap(h: float, w := 0.0) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(0, h)
+	c.custom_minimum_size = Vector2(w, h)
 	return c
 
 

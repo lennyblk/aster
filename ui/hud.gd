@@ -39,13 +39,17 @@ func _ready() -> void:
 	visible = false
 	Game.state_changed.connect(_on_state)
 	Game.input_device_changed.connect(_on_device)
+	Game.ghost_changed.connect(func(): _fill(Game.using_gamepad))
 	_on_state(Game.state)
 
 
 func _fill(gamepad: bool) -> void:
 	for child in _box.get_children():
 		child.queue_free()
-	for c in (GAMEPAD if gamepad else KEYBOARD):
+	var controls: Array = (GAMEPAD if gamepad else KEYBOARD).duplicate()
+	if not Game.ghost.is_empty():
+		controls.insert(controls.size() - 1, ["LB" if gamepad else "E", "REMOVE GHOST"])
+	for c in controls:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UIStyle.keycap(c[0]))

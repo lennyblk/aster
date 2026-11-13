@@ -7,7 +7,9 @@ enum State { MENU, PLAYING, PAUSED, GAME_OVER }
 const MENU_SCENE := "res://scenes/menu.tscn"
 const GAME_OVER_SCENE := "res://ui/game_over.tscn"
 const SETTINGS_FILE := "user://settings.cfg"
-const RECORDS_FILE := "user://records.cfg"
+# Since only the first lap counts, the older records (flying laps, faster) stay in records.cfg and are no longer read
+const RECORDS_FILE := "user://records_lap1.cfg"
+const GHOSTS_DIR := "user://ghosts/"
 const RECORDS_KEPT := 5
 const PIXEL_ROWS := 540.0      # height of the 3D image in pixels, whatever the window size (matches postfx.gdshader)
 const MAPS := [
@@ -21,9 +23,10 @@ const MAPS := [
 
 signal state_changed(state: State)
 signal input_device_changed(gamepad: bool)
-signal race_started                                     # first time over the finish line: the clock runs
+signal race_started                                     # first input after the spawn: the clock runs
 signal lap_completed(time: float, rank: int, previous_best: float)   # rank 1 = new record, 0 = not in the top
-signal race_reset                                       # car back at the spawn, waiting to cross the line
+signal race_reset                                       # car back at the spawn, waiting for the first input
+signal ghost_changed
 
 var state := State.PLAYING:
 	set(value):
@@ -35,6 +38,7 @@ var using_gamepad := false   # last input came from a controller (the HUD shows 
 
 var _volumes := {"Master": 0.8, "Music": 0.7, "Engine": 0.8, "SFX": 0.8}
 var _records := {}           # map scene path -> best lap times (seconds), fastest first
+var ghost := {}              # ghost raced on its map, kept across restarts: {map, name, frames}; empty = none
 
 const DISPLAY_MODES := ["windowed", "fullscreen", "exclusive"]
 const RESOLUTIONS := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160)]
@@ -82,6 +86,8 @@ func _detect_start_scene() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if state == State.PLAYING and event.is_action_pressed("pause"):
 		pause()
+	elif state == State.PLAYING and event.is_action_pressed("remove_ghost"):
+		clear_ghost()
 
 
 func _input(event: InputEvent) -> void:
@@ -98,6 +104,8 @@ func _input(event: InputEvent) -> void:
 # ---------- Flow ----------
 
 func play_map(path: String) -> void:
+	if not ghost.is_empty() and ghost.map != path:
+		clear_ghost()
 	current_map = path
 	_change_scene(path, State.PLAYING)
 
@@ -244,14 +252,50 @@ func _load_records() -> void:
 	if cfg.load(RECORDS_FILE) != OK:
 		return
 	for key in cfg.get_section_keys("records"):
-		var map: String = key
-		# records saved before the maps moved to scenes/maps/ were keyed by the old path
-		if map.count("/") == 2 and not ResourceLoader.exists(map):
-			map = "res://scenes/maps/" + map.get_file()
-		var merged: Array = _records.get(map, []) + cfg.get_value("records", key, [])
-		merged.sort()
-		merged.resize(mini(merged.size(), RECORDS_KEPT))
-		_records[map] = merged
+		_records[key] = cfg.get_value("records", key, [])
+
+
+# ---------- Ghost ----------
+
+func set_ghost(map: String, player_name: String, frames: PackedFloat32Array) -> void:
+	ghost = {"map": map, "name": player_name, "frames": frames}
+	ghost_changed.emit()
+
+
+func clear_ghost() -> void:
+	if ghost.is_empty():
+		return
+	ghost = {}
+	ghost_changed.emit()
+
+
+## Ghost of the local best lap on a map, encoded (see encode_ghost), "" if there is none
+func local_ghost(map: String) -> String:
+	var path := _ghost_path(map)
+	return FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+
+
+func save_ghost(map: String, frames: PackedFloat32Array) -> void:
+	DirAccess.make_dir_recursive_absolute(GHOSTS_DIR)
+	var file := FileAccess.open(_ghost_path(map), FileAccess.WRITE)
+	if file:
+		file.store_string(encode_ghost(frames))
+
+
+func _ghost_path(map: String) -> String:
+	return GHOSTS_DIR + map.get_file().get_basename() + ".txt"
+
+
+## Same text in the local file and on the leaderboard: gzip + base64
+static func encode_ghost(frames: PackedFloat32Array) -> String:
+	return Marshalls.raw_to_base64(frames.to_byte_array().compress(FileAccess.COMPRESSION_GZIP))
+
+
+static func decode_ghost(data: String) -> PackedFloat32Array:
+	var raw := Marshalls.base64_to_raw(data)
+	if raw.is_empty():
+		return PackedFloat32Array()
+	return raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP).to_float32_array()
 
 
 ## m:ss.mmm
