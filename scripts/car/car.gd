@@ -5,6 +5,8 @@ const CAM_ROTATE_SPEED = 5.0
 
 @export_group("Engine")
 @export var engine_power := 300.0
+@export var reverse_power := 0.5            ## share of engine_power when driving backward
+@export var reverse_max_speed_kmh := 25.0   ## no more push backward above this speed
 
 @export_group("Steering")
 @export var max_steer := 0.8              ## radians
@@ -204,6 +206,10 @@ func _physics_process(delta: float) -> void:
 	steering = move_toward(steering, target_steer, steer_limit / steer_time * delta)
 
 	engine_force = throttle * engine_power
+	# the brake key reverses once the car rolls backward: weaker, and capped (braking while still going forward is unchanged)
+	var forward_speed := global_basis.z.dot(linear_velocity)
+	if throttle < 0.0 and forward_speed < 0.5:
+		engine_force *= reverse_power if -forward_speed * 3.6 < reverse_max_speed_kmh else 0.0
 
 	# right after a hit the assists stay off, so every crash is resolved by the physics alone (same speed loss,
 	# same bounce) instead of being partly undone by the drift speed keeping or the trajectory correction
@@ -241,14 +247,16 @@ func _on_game_state(state: Game.State) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-# Drifting fills the gauge (faster with a wider slide). Holding boost pushes the car forward as long as
-# there is something in the gauge, in any situation (straight line, drift, in the air).
+# A real forward slide fills the gauge (faster when wider), but not while boosting. Holding boost pushes the car
+# forward as long as there is something in the gauge, in any situation (straight line, drift, in the air).
 func _update_boost(delta: float, playing: bool) -> void:
-	if is_drifting and is_on_ground() and speed > drift_min_speed:
+	is_boosting = playing and boost_meter > 0.0 and Input.is_action_pressed("boost")
+	# the handbrake alone counts as drifting: holding it with the throttle on a straight line must not charge anything
+	var slide := absf(slip_angle) >= deg_to_rad(drift_min_angle_deg)
+	if is_drifting and slide and not is_boosting and is_on_ground() and speed > drift_min_speed:
 		var amount := clampf(absf(slip_angle) / deg_to_rad(25.0), 0.3, 1.0)
 		boost_meter = minf(1.0, boost_meter + amount * delta / boost_fill_time)
 	boost_ready = boost_meter > 0.0
-	is_boosting = playing and boost_ready and Input.is_action_pressed("boost")
 	if not is_boosting:
 		return
 	boost_meter = maxf(0.0, boost_meter - delta / boost_duration)
