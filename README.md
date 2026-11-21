@@ -36,6 +36,10 @@
   </tr>
   <tr>
     <td><img src="docs/screenshots/snow.png" alt="Snow"></td>
+    <td><img src="docs/screenshots/jungle.png" alt="Jungle"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/island.png" alt="Island"></td>
     <td><img src="docs/screenshots/settings.png" alt="Settings"></td>
   </tr>
   <tr>
